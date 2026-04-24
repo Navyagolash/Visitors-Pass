@@ -1,36 +1,66 @@
 # Visitor Pass Management System
 
-A submission-ready MERN assignment project for digitizing visitor registration, appointment approval, QR-based pass issuance, and front-desk check-in/check-out.
+A full-stack MERN assignment project for digitizing visitor registration, appointment approval, QR-based visitor pass generation, and front-desk check-in/check-out operations.
 
-## Highlights
+## Live Demo
 
-- JWT authentication with role-based access (`admin`, `security`, `employee`, `visitor`)
-- Visitor pre-registration with contact details and photo URL support
+- Frontend: [https://visitors-pass-fosw.vercel.app](https://visitors-pass-fosw.vercel.app)
+- Backend API: [https://visitors-pass-1.onrender.com](https://visitors-pass-1.onrender.com)
+- GitHub Repository: [https://github.com/Navyagolash/Visitors-Pass](https://github.com/Navyagolash/Visitors-Pass)
+
+## Objective
+
+This project was built to replace manual visitor registers with a digital system that supports:
+
+- visitor pre-registration
+- appointment approval
+- QR-based pass issuance
+- PDF visitor badge generation
+- visitor check-in and check-out tracking
+- role-based access for admin, security, employee, and visitor users
+
+## Features
+
+- JWT authentication and role-based authorization
+- Visitor registration with contact details, purpose, and photo URL
 - Appointment creation and approval workflow
-- QR-code pass generation plus PDF badge creation on the backend
-- Check-in/check-out logging and CSV export
-- Multi-organization-ready data model using `organizationId`
-- Seed data for quick demo setup
-- Docker Compose setup as a bonus deliverable
+- QR-based visitor pass generation
+- PDF badge generation on the backend
+- Check-in and check-out logging
+- Dashboard for managing visitors, appointments, and passes
+- CSV export for check logs
+- Seed script for demo data
+- Multi-organization-ready schema using `organizationId`
+- Docker support as a bonus feature
 
 ## Tech Stack
 
-- Frontend: React + Vite + React Router
-- Backend: Node.js + Express + MongoDB + Mongoose
-- Auth: JWT + bcrypt
-- Utilities: QRCode + PDFKit
+- Frontend: React, Vite, React Router
+- Backend: Node.js, Express.js
+- Database: MongoDB Atlas, Mongoose
+- Authentication: JWT, bcryptjs
+- Utilities: QRCode, PDFKit
+- Deployment: Vercel, Render
+
+## User Roles
+
+- `admin`: manages the system, approvals, and pass issuance
+- `security`: verifies passes and handles check-in/check-out
+- `employee`: creates or manages visitor appointments
+- `visitor`: can register and access pass-related flow
 
 ## Project Structure
 
 ```text
 .
-├── backend
-├── frontend
-├── docker-compose.yml
-└── README.md
+|-- backend
+|-- frontend
+|-- docs
+|-- docker-compose.yml
+`-- README.md
 ```
 
-## Setup
+## Local Setup
 
 ### 1. Backend
 
@@ -51,7 +81,29 @@ npm install
 npm run dev
 ```
 
-Frontend runs at `http://localhost:5173` and backend runs at `http://localhost:5000`.
+Local URLs:
+
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:5000`
+
+## Environment Variables
+
+### Backend `.env`
+
+```env
+PORT=5000
+MONGODB_URI=your_mongodb_connection_string
+JWT_SECRET=your_secret_key
+CLIENT_URL=http://localhost:5173
+EMAIL_FROM=noreply@example.com
+SMS_SENDER=VMS
+```
+
+### Frontend `.env`
+
+```env
+VITE_API_URL=http://localhost:5000/api
+```
 
 ## Demo Credentials
 
@@ -61,15 +113,18 @@ Run the seed script first, then use:
 - Security: `security@acme.com` / `Password123!`
 - Employee: `employee@acme.com` / `Password123!`
 
-## Main API Endpoints
+## Main API Routes
 
 - `POST /api/auth/register`
 - `POST /api/auth/login`
 - `GET /api/auth/me`
-- `GET/POST /api/visitors`
-- `GET/POST /api/appointments`
+- `GET /api/visitors`
+- `POST /api/visitors`
+- `GET /api/appointments`
+- `POST /api/appointments`
 - `PATCH /api/appointments/:id/status`
-- `GET/POST /api/passes`
+- `GET /api/passes`
+- `POST /api/passes`
 - `GET /api/passes/verify/:passCode`
 - `POST /api/passes/scan/:passCode`
 - `GET /api/passes/logs/export`
@@ -78,31 +133,58 @@ Run the seed script first, then use:
 
 The seed script creates:
 
-- 3 users across admin, security, and employee roles
+- 3 demo users
 - 2 visitors
 - 2 appointments
-- 1 issued demo pass
+- 1 issued pass
 - 1 check-in log
 
-## Docker Bonus
+## Deployment
 
-```bash
-docker compose up --build
-```
+### Frontend
 
-This starts MongoDB, the Express API, and the React frontend.
+- Hosted on Vercel
+- Uses `frontend/vercel.json` for SPA route handling
 
-## Demo Walkthrough
+### Backend
 
-1. Login as admin.
-2. Register a new visitor.
-3. Create an appointment for that visitor.
-4. Approve the appointment.
-5. Issue a visitor pass and verify the QR panel.
-6. Check the visitor in/out and export logs.
+- Hosted on Render
+- Connected to MongoDB Atlas
+
+## Demo Flow
+
+1. Open the live frontend.
+2. Login with seeded admin credentials.
+3. Register or create a visitor.
+4. Create an appointment.
+5. Approve the appointment.
+6. Issue a pass.
+7. Verify the pass.
+8. Perform check-in and check-out.
+9. Review saved data in MongoDB Atlas.
+
+## Screenshots / Video
+
+For final submission, include:
+
+- login page screenshot
+- register page screenshot
+- dashboard screenshot
+- appointment approval screenshot
+- issued pass screenshot
+- check-in/check-out screenshot
+- MongoDB collection screenshot
+- short demo video link
+
+## Bonus Points Covered
+
+- Multi-organization-ready design
+- QR-based pass workflow
+- PDF badge generation
+- Docker setup
 
 ## Notes
 
-- Email and SMS integrations are stubbed through service helpers so real providers can be added quickly.
-- The frontend uses a pass-code verification flow in place of a camera QR scanner to keep the assignment lightweight and easy to run locally.
-- Add screenshots or a short screen recording before submission if your evaluator expects them in the repository.
+- Email and SMS notifications are currently stubbed for demo purposes.
+- The live backend may take a few seconds to respond on the first request because Render free instances can sleep.
+- The frontend uses SPA routing, so direct refresh on routes like `/login` and `/register` is supported through Vercel rewrite rules.
