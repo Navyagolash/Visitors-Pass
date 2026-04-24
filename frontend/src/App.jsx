@@ -1,7 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./state/AuthContext";
 import { Layout } from "./components/Layout";
-import { CourseShowcasePage } from "./pages/CourseShowcasePage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
@@ -19,7 +18,6 @@ function ProtectedRoute({ children }) {
 export default function App() {
   return (
     <Routes>
-      <Route path="/course-showcase" element={<CourseShowcasePage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route
