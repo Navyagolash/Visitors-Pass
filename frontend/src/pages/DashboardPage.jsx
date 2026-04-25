@@ -34,7 +34,7 @@ export function DashboardPage() {
   const [visitorForm, setVisitorForm] = useState(visitorSeed);
   const [appointmentForm, setAppointmentForm] = useState(appointmentSeed);
   const [users, setUsers] = useState([]);
-  const [passCode, setPassCode] = useState("VP-DEMO1234");
+  const [passCode, setPassCode] = useState("");
   const [verifiedPass, setVerifiedPass] = useState(null);
   const [message, setMessage] = useState("");
   const loadData = async () => {
@@ -105,27 +105,47 @@ export function DashboardPage() {
   };
 
   const issuePass = async (appointmentId) => {
-    await apiFetch("/passes", {
+    const pass = await apiFetch("/passes", {
       method: "POST",
       body: JSON.stringify({ appointmentId })
     });
+    setPassCode(pass.passCode);
+    setVerifiedPass(pass);
     setMessage("Visitor pass issued.");
     loadData();
   };
 
-  const verifyPass = async () => {
-    const data = await apiFetch(`/passes/verify/${passCode}`);
+  const verifyPass = async (code = passCode) => {
+    if (!code) {
+      setMessage("Enter or select a pass code first.");
+      return null;
+    }
+
+    const data = await apiFetch(`/passes/verify/${code}`);
     setVerifiedPass(data);
+    setPassCode(data.passCode);
+    return data;
   };
 
   const scanPass = async (action) => {
-    await apiFetch(`/passes/scan/${passCode}`, {
+    const activeCode = verifiedPass?.passCode || passCode;
+    if (!activeCode) {
+      setMessage("Verify or select a pass before scanning.");
+      return;
+    }
+
+    await apiFetch(`/passes/scan/${activeCode}`, {
       method: "POST",
       body: JSON.stringify({ action, location: "Main Gate", notes: `Processed by ${user.role}` })
     });
     setMessage(`Pass ${action === "check_in" ? "checked in" : "checked out"}.`);
-    verifyPass();
+    await verifyPass(activeCode);
     loadData();
+  };
+
+  const selectPass = async (code) => {
+    setPassCode(code);
+    await verifyPass(code);
   };
 
   const exportLogs = async () => {
@@ -369,7 +389,7 @@ export function DashboardPage() {
       <SectionCard title="Issued Passes" subtitle="Digital badges generated for visitors.">
         <div className="pass-grid">
           {passes.map((pass) => (
-            <article className="pass-card" key={pass._id}>
+            <article className="pass-card" key={pass._id} onClick={() => selectPass(pass.passCode)} role="button" tabIndex={0}>
               <div>
                 <p className="eyebrow">{pass.passCode}</p>
                 <h4>{pass.visitorId?.fullName}</h4>
