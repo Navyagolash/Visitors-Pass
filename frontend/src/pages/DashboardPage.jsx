@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { apiFetch } from "../api";
 import { SectionCard } from "../components/SectionCard";
 import { StatCard } from "../components/StatCard";
+import { ToastMessage } from "../components/ToastMessage";
 import { useAuth } from "../state/AuthContext";
 
 const appointmentSeed = {
@@ -23,6 +25,8 @@ const visitorSeed = {
 
 export function DashboardPage() {
   const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [visitors, setVisitors] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [passes, setPasses] = useState([]);
@@ -36,7 +40,8 @@ export function DashboardPage() {
   const [users, setUsers] = useState([]);
   const [passCode, setPassCode] = useState("");
   const [verifiedPass, setVerifiedPass] = useState(null);
-  const [message, setMessage] = useState("");
+  const [toast, setToast] = useState(null);
+  const [busyAction, setBusyAction] = useState("");
   const loadData = async () => {
     const [visitorData, appointmentData, passData] = await Promise.all([
       apiFetch("/visitors"),
@@ -61,8 +66,26 @@ export function DashboardPage() {
   };
 
   useEffect(() => {
-    loadData().catch((error) => setMessage(error.message));
+    loadData().catch((error) => setToast({ type: "error", title: "Load failed", text: error.message }));
   }, []);
+
+  useEffect(() => {
+    if (!location.state?.flash) {
+      return;
+    }
+
+    setToast(location.state.flash);
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [location, navigate]);
+
+  useEffect(() => {
+    if (!toast) {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => setToast(null), 2800);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("vms_user");
@@ -75,72 +98,114 @@ export function DashboardPage() {
 
   const createVisitor = async (event) => {
     event.preventDefault();
-    await apiFetch("/visitors", {
-      method: "POST",
-      body: JSON.stringify(visitorForm)
-    });
-    setVisitorForm(visitorSeed);
-    setMessage("Visitor registered successfully.");
-    loadData();
+    try {
+      setBusyAction("create-visitor");
+      await apiFetch("/visitors", {
+        method: "POST",
+        body: JSON.stringify(visitorForm)
+      });
+      setVisitorForm(visitorSeed);
+      setToast({ type: "success", title: "Visitor saved", text: "Visitor registered successfully." });
+      loadData();
+    } finally {
+      setBusyAction("");
+    }
   };
 
   const createAppointment = async (event) => {
     event.preventDefault();
-    await apiFetch("/appointments", {
-      method: "POST",
-      body: JSON.stringify(appointmentForm)
-    });
-    setAppointmentForm({ ...appointmentSeed, hostId: appointmentForm.hostId });
-    setMessage("Appointment created and notification triggered.");
-    loadData();
+    try {
+      setBusyAction("create-appointment");
+      await apiFetch("/appointments", {
+        method: "POST",
+        body: JSON.stringify(appointmentForm)
+      });
+      setAppointmentForm({ ...appointmentSeed, hostId: appointmentForm.hostId });
+      setToast({
+        type: "success",
+        title: "Appointment created",
+        text: "Appointment created and notification triggered."
+      });
+      loadData();
+    } finally {
+      setBusyAction("");
+    }
   };
 
   const approveAppointment = async (appointmentId, status) => {
-    await apiFetch(`/appointments/${appointmentId}/status`, {
-      method: "PATCH",
-      body: JSON.stringify({ status })
-    });
-    setMessage(`Appointment ${status}.`);
-    loadData();
+    try {
+      setBusyAction(`appointment-${appointmentId}-${status}`);
+      await apiFetch(`/appointments/${appointmentId}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status })
+      });
+      setToast({ type: "success", title: "Appointment updated", text: `Appointment ${status}.` });
+      loadData();
+    } finally {
+      setBusyAction("");
+    }
   };
 
   const issuePass = async (appointmentId) => {
-    const pass = await apiFetch("/passes", {
-      method: "POST",
-      body: JSON.stringify({ appointmentId })
-    });
-    setPassCode(pass.passCode);
-    setVerifiedPass(pass);
-    setMessage("Visitor pass issued.");
-    loadData();
+    try {
+      setBusyAction(`issue-pass-${appointmentId}`);
+      const pass = await apiFetch("/passes", {
+        method: "POST",
+        body: JSON.stringify({ appointmentId })
+      });
+      setPassCode(pass.passCode);
+      setVerifiedPass(pass);
+      setToast({ type: "success", title: "Pass issued", text: "Visitor pass issued." });
+      loadData();
+    } finally {
+      setBusyAction("");
+    }
   };
 
   const verifyPass = async (code = passCode) => {
     if (!code) {
-      setMessage("Enter or select a pass code first.");
+      setToast({ type: "error", title: "Pass code required", text: "Enter or select a pass code first." });
       return null;
     }
 
-    const data = await apiFetch(`/passes/verify/${code}`);
-    setVerifiedPass(data);
-    setPassCode(data.passCode);
-    return data;
+    try {
+      setBusyAction("verify-pass");
+      const data = await apiFetch(`/passes/verify/${code}`);
+      setVerifiedPass(data);
+      setPassCode(data.passCode);
+      return data;
+    } finally {
+      setBusyAction("");
+    }
   };
 
   const scanPass = async (action) => {
     const activeCode = verifiedPass?.passCode || passCode;
     if (!activeCode) {
-      setMessage("Verify or select a pass before scanning.");
+      setToast({
+        type: "error",
+        title: "Verify pass first",
+        text: "Verify or select a pass before scanning."
+      });
       return;
     }
 
-    await apiFetch(`/passes/scan/${activeCode}`, {
-      method: "POST",
-      body: JSON.stringify({ action, location: "Main Gate", notes: `Processed by ${user.role}` })
-    });
-    setMessage(`Pass ${action === "check_in" ? "checked in" : "checked out"}.`);
-    await verifyPass(activeCode);
-    loadData();
+    try {
+      setBusyAction(action);
+      await apiFetch(`/passes/scan/${activeCode}`, {
+        method: "POST",
+        body: JSON.stringify({ action, location: "Main Gate", notes: `Processed by ${user.role}` })
+      });
+      setToast({
+        type: "success",
+        title: action === "check_in" ? "Checked in" : "Checked out",
+        text: `Pass ${action === "check_in" ? "checked in" : "checked out"}.`
+      });
+      await verifyPass(activeCode);
+      loadData();
+    } finally {
+      setBusyAction("");
+    }
   };
 
   const selectPass = async (code) => {
@@ -149,18 +214,25 @@ export function DashboardPage() {
   };
 
   const exportLogs = async () => {
-    const csv = await apiFetch("/passes/logs/export");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "check-logs.csv";
-    link.click();
-    URL.revokeObjectURL(url);
+    try {
+      setBusyAction("export-logs");
+      const csv = await apiFetch("/passes/logs/export");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "check-logs.csv";
+      link.click();
+      URL.revokeObjectURL(url);
+      setToast({ type: "success", title: "Export complete", text: "Check logs exported successfully." });
+    } finally {
+      setBusyAction("");
+    }
   };
 
   return (
     <div className="dashboard">
+      <ToastMessage toast={toast} onClose={() => setToast(null)} />
       <header className="hero-card">
         <div>
           <p className="eyebrow">MERN Assignment</p>
@@ -176,8 +248,6 @@ export function DashboardPage() {
           <StatCard label="Approved" value={stats.approvedAppointments} accent="pink" />
         </div>
       </header>
-
-      {message ? <div className="success-box">{message}</div> : null}
 
       <div className="dashboard-grid">
         <SectionCard
@@ -231,8 +301,8 @@ export function DashboardPage() {
                 onChange={(e) => setVisitorForm({ ...visitorForm, photoUrl: e.target.value })}
               />
             </label>
-            <button className="primary-button" type="submit">
-              Save Visitor
+            <button className="primary-button" type="submit" disabled={busyAction === "create-visitor"}>
+              {busyAction === "create-visitor" ? "Saving..." : "Save Visitor"}
             </button>
           </form>
         </SectionCard>
@@ -295,8 +365,8 @@ export function DashboardPage() {
                 onChange={(e) => setAppointmentForm({ ...appointmentForm, notes: e.target.value })}
               />
             </label>
-            <button className="primary-button" type="submit">
-              Create Appointment
+            <button className="primary-button" type="submit" disabled={busyAction === "create-appointment"}>
+              {busyAction === "create-appointment" ? "Creating..." : "Create Appointment"}
             </button>
           </form>
         </SectionCard>
@@ -327,19 +397,25 @@ export function DashboardPage() {
                     <td className="table-actions">
                       <button
                         className="ghost-button"
+                        disabled={busyAction === `appointment-${appointment._id}-approved`}
                         onClick={() => approveAppointment(appointment._id, "approved")}
                       >
-                        Approve
+                        {busyAction === `appointment-${appointment._id}-approved` ? "Approving..." : "Approve"}
                       </button>
                       <button
                         className="ghost-button"
+                        disabled={busyAction === `appointment-${appointment._id}-rejected`}
                         onClick={() => approveAppointment(appointment._id, "rejected")}
                       >
-                        Reject
+                        {busyAction === `appointment-${appointment._id}-rejected` ? "Rejecting..." : "Reject"}
                       </button>
                       {appointment.status === "approved" ? (
-                        <button className="primary-button" onClick={() => issuePass(appointment._id)}>
-                          Issue Pass
+                        <button
+                          className="primary-button"
+                          disabled={busyAction === `issue-pass-${appointment._id}`}
+                          onClick={() => issuePass(appointment._id)}
+                        >
+                          {busyAction === `issue-pass-${appointment._id}` ? "Issuing..." : "Issue Pass"}
                         </button>
                       ) : null}
                     </td>
@@ -357,17 +433,17 @@ export function DashboardPage() {
               <input value={passCode} onChange={(e) => setPassCode(e.target.value.toUpperCase())} />
             </label>
             <div className="inline-actions">
-              <button className="primary-button" onClick={verifyPass}>
-                Verify Pass
+              <button className="primary-button" disabled={busyAction === "verify-pass"} onClick={verifyPass}>
+                {busyAction === "verify-pass" ? "Verifying..." : "Verify Pass"}
               </button>
-              <button className="ghost-button" onClick={() => scanPass("check_in")}>
-                Check In
+              <button className="ghost-button" disabled={busyAction === "check_in"} onClick={() => scanPass("check_in")}>
+                {busyAction === "check_in" ? "Checking In..." : "Check In"}
               </button>
-              <button className="ghost-button" onClick={() => scanPass("check_out")}>
-                Check Out
+              <button className="ghost-button" disabled={busyAction === "check_out"} onClick={() => scanPass("check_out")}>
+                {busyAction === "check_out" ? "Checking Out..." : "Check Out"}
               </button>
-              <button className="ghost-button link-button" onClick={exportLogs}>
-                Export Logs
+              <button className="ghost-button link-button" disabled={busyAction === "export-logs"} onClick={exportLogs}>
+                {busyAction === "export-logs" ? "Exporting..." : "Export Logs"}
               </button>
             </div>
 
