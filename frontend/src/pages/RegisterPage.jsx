@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { ToastMessage } from "../components/ToastMessage";
 import { useAuth } from "../state/AuthContext";
 
 export function RegisterPage() {
@@ -16,6 +17,16 @@ export function RegisterPage() {
   });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  useEffect(() => {
+    if (!toast) {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => setToast(null), 2800);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -23,9 +34,18 @@ export function RegisterPage() {
       setSubmitting(true);
       setError("");
       await register(form);
-      navigate("/");
+      navigate("/", {
+        state: {
+          flash: {
+            type: "success",
+            title: "Registration successful",
+            text: "Your organization workspace is ready."
+          }
+        }
+      });
     } catch (err) {
       setError(err.message);
+      setToast({ type: "error", title: "Registration failed", text: err.message });
     } finally {
       setSubmitting(false);
     }
@@ -33,6 +53,7 @@ export function RegisterPage() {
 
   return (
     <div className="auth-shell">
+      <ToastMessage toast={toast} onClose={() => setToast(null)} />
       <form className="auth-card" onSubmit={handleSubmit}>
         <p className="eyebrow">Multi-Organization Ready</p>
         <h1>Create the first admin</h1>

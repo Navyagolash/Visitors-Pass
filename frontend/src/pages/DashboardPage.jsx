@@ -173,6 +173,11 @@ export function DashboardPage() {
       const data = await apiFetch(`/passes/verify/${code}`);
       setVerifiedPass(data);
       setPassCode(data.passCode);
+      setToast({
+        type: "success",
+        title: "Pass verified",
+        text: `Pass ${data.passCode} verified successfully.`
+      });
       return data;
     } finally {
       setBusyAction("");

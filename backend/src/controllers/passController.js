@@ -7,13 +7,37 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { buildBadgePdfBuffer, buildQrDataUrl } from "../utils/passArtifacts.js";
 
 export const listPasses = asyncHandler(async (req, res) => {
-  const passes = await Pass.find({ organizationId: req.user.organizationId })
+  const { status = "", hostId = "", q = "" } = req.query;
+  const query = { organizationId: req.user.organizationId };
+
+  if (status) {
+    query.status = status;
+  }
+
+  if (hostId) {
+    query.hostId = hostId;
+  }
+
+  const passes = await Pass.find(query)
     .populate("visitorId", "fullName email company phone")
     .populate("hostId", "name email")
     .populate("appointmentId", "visitDate purpose status")
     .sort({ createdAt: -1 });
 
-  res.json(passes);
+  const filteredPasses = passes.filter((item) => {
+    if (!q) {
+      return true;
+    }
+
+    const search = q.toLowerCase();
+    return (
+      item.passCode?.toLowerCase().includes(search) ||
+      item.visitorId?.fullName?.toLowerCase().includes(search) ||
+      item.visitorId?.company?.toLowerCase().includes(search)
+    );
+  });
+
+  res.json(filteredPasses);
 });
 
 export const issuePass = asyncHandler(async (req, res) => {
@@ -34,6 +58,17 @@ export const issuePass = asyncHandler(async (req, res) => {
     throw new Error("Only approved appointments can receive passes");
   }
 
+  const existingPass = await Pass.findOne({
+    appointmentId: appointment._id,
+    organizationId: req.user.organizationId
+  });
+
+  if (existingPass) {
+    res.status(400);
+    throw new Error("A pass has already been issued for this appointment");
+  }
+
+  // I generate the QR first because I want the exact same value to be shown in the UI and embedded inside the PDF badge.
   const passCode = `VP-${nanoid(8).toUpperCase()}`;
   const payload = {
     passCode,
@@ -46,7 +81,8 @@ export const issuePass = asyncHandler(async (req, res) => {
     passCode,
     visitorName: appointment.visitorId.fullName,
     hostName: appointment.hostId.name,
-    visitDate: appointment.visitDate
+    visitDate: appointment.visitDate,
+    qrImage
   });
 
   const pass = await Pass.create({
@@ -79,6 +115,7 @@ export const verifyPass = asyncHandler(async (req, res) => {
     throw new Error("Pass not found");
   }
 
+  // A visitor cannot keep using an old pass forever, so I update the status here when the time window is over.
   if (new Date() > new Date(pass.validUntil) && pass.status !== PASS_STATUS.CHECKED_OUT) {
     pass.status = PASS_STATUS.EXPIRED;
     await pass.save();
@@ -99,10 +136,23 @@ export const scanPass = asyncHandler(async (req, res) => {
     throw new Error("Pass not found");
   }
 
+  if (pass.status === PASS_STATUS.EXPIRED || pass.status === PASS_STATUS.CANCELLED) {
+    res.status(400);
+    throw new Error("This pass is no longer active");
+  }
+
+  if (action === CHECK_ACTION.OUT && pass.status !== PASS_STATUS.CHECKED_IN) {
+    res.status(400);
+    throw new Error("You can only check out a visitor after check-in");
+  }
+
   if (action === CHECK_ACTION.IN) {
     pass.status = PASS_STATUS.CHECKED_IN;
   } else if (action === CHECK_ACTION.OUT) {
     pass.status = PASS_STATUS.CHECKED_OUT;
+  } else {
+    res.status(400);
+    throw new Error("Unknown scan action");
   }
 
   await pass.save();

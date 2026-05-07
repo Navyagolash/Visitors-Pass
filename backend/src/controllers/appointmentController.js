@@ -6,16 +6,50 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { sendEmailNotification, sendSmsNotification } from "../utils/notifications.js";
 
 export const listAppointments = asyncHandler(async (req, res) => {
-  const appointments = await Appointment.find({ organizationId: req.user.organizationId })
+  const { status, hostId, company, dateFrom, dateTo, q = "" } = req.query;
+  const query = { organizationId: req.user.organizationId };
+
+  if (status) {
+    query.status = status;
+  }
+
+  if (hostId) {
+    query.hostId = hostId;
+  }
+
+  if (dateFrom || dateTo) {
+    query.visitDate = {};
+    if (dateFrom) {
+      query.visitDate.$gte = new Date(dateFrom);
+    }
+    if (dateTo) {
+      query.visitDate.$lte = new Date(dateTo);
+    }
+  }
+
+  const appointments = await Appointment.find(query)
     .populate("visitorId", "fullName email phone company")
     .populate("hostId", "name email role")
     .sort({ visitDate: 1 });
 
-  res.json(appointments);
+  const filteredAppointments = appointments.filter((item) => {
+    const matchesSearch =
+      !q ||
+      item.visitorId?.fullName?.toLowerCase().includes(q.toLowerCase()) ||
+      item.purpose?.toLowerCase().includes(q.toLowerCase());
+
+    const matchesCompany =
+      !company || item.visitorId?.company?.toLowerCase().includes(company.toLowerCase());
+
+    return matchesSearch && matchesCompany;
+  });
+
+  res.json(filteredAppointments);
 });
 
 export const createAppointment = asyncHandler(async (req, res) => {
   const { visitorId, hostId, visitDate, purpose, notes } = req.body;
+
   const visitor = await Visitor.findOne({ _id: visitorId, organizationId: req.user.organizationId });
   const host = await User.findOne({ _id: hostId, organizationId: req.user.organizationId });
 
@@ -36,14 +70,22 @@ export const createAppointment = asyncHandler(async (req, res) => {
   await sendEmailNotification({
     to: visitor.email,
     subject: "Visitor appointment created",
-    message: `Your appointment for ${new Date(visitDate).toLocaleString()} is pending approval.`
+    message: `Hi ${visitor.fullName}, your appointment for ${new Date(visitDate).toLocaleString()} is pending approval.`
   });
+
+  if (visitor.phone) {
+    await sendSmsNotification({
+      to: visitor.phone,
+      message: `Your appointment request for ${new Date(visitDate).toLocaleString()} is pending approval.`
+    });
+  }
 
   res.status(201).json(appointment);
 });
 
 export const updateAppointmentStatus = asyncHandler(async (req, res) => {
   const { status, approvalNote } = req.body;
+
   const appointment = await Appointment.findOne({
     _id: req.params.id,
     organizationId: req.user.organizationId
@@ -54,6 +96,8 @@ export const updateAppointmentStatus = asyncHandler(async (req, res) => {
     throw new Error("Appointment not found");
   }
 
+  // I keep this permission check explicit because this was one of the mentor comments.
+  // Admin and security can approve any appointment, while an employee can only act on their own host records.
   const canModerate =
     req.user.role === ROLES.ADMIN ||
     req.user.role === ROLES.SECURITY ||
@@ -71,13 +115,13 @@ export const updateAppointmentStatus = asyncHandler(async (req, res) => {
   await sendEmailNotification({
     to: appointment.visitorId.email,
     subject: `Appointment ${appointment.status}`,
-    message: `Your appointment has been marked as ${appointment.status}.`
+    message: `Hi ${appointment.visitorId.fullName}, your appointment has been marked as ${appointment.status}.`
   });
 
   if (appointment.visitorId.phone) {
     await sendSmsNotification({
       to: appointment.visitorId.phone,
-      message: `Appointment status: ${appointment.status}`
+      message: `Appointment status updated to ${appointment.status}.`
     });
   }
 
