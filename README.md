@@ -22,13 +22,15 @@ This project was built to replace manual visitor registers with a digital system
 ## Features
 
 - JWT authentication and role-based authorization
-- Visitor registration with contact details, purpose, and photo URL
+- Visitor registration with contact details, purpose, photo URL, and image upload
 - Appointment creation and approval workflow
-- QR-based visitor pass generation
-- PDF badge generation on the backend
+- QR-based visitor pass generation and camera scanning
+- PDF badge generation on the backend with frontend badge download
 - Check-in and check-out logging
 - Dashboard for managing visitors, appointments, and passes
 - CSV export for check logs
+- Email notifications through SMTP
+- SMS notifications through Twilio
 - Seed script for demo data
 - Multi-organization-ready schema using `organizationId`
 - Docker support as a bonus feature
@@ -96,7 +98,13 @@ MONGODB_URI=your_mongodb_connection_string
 JWT_SECRET=your_secret_key
 CLIENT_URL=http://localhost:5173
 EMAIL_FROM=noreply@example.com
-SMS_SENDER=VMS
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USER=your_smtp_user
+SMTP_PASS=your_smtp_password
+TWILIO_ACCOUNT_SID=your_twilio_sid
+TWILIO_AUTH_TOKEN=your_twilio_auth_token
+TWILIO_PHONE_NUMBER=+15551234567
 ```
 
 ### Frontend `.env`
@@ -119,7 +127,7 @@ Run the seed script first, then use:
 - `POST /api/auth/login`
 - `GET /api/auth/me`
 - `GET /api/visitors`
-- `POST /api/visitors`
+- `POST /api/visitors` accepts `multipart/form-data` with an optional `photo` image file
 - `GET /api/appointments`
 - `POST /api/appointments`
 - `PATCH /api/appointments/:id/status`
@@ -165,16 +173,17 @@ The seed script creates:
 
 ## Screenshots / Video
 
-For final submission, include:
+Add the final submission captures under `docs/screenshots/`:
 
-- login page screenshot
-- register page screenshot
-- dashboard screenshot
-- appointment approval screenshot
-- issued pass screenshot
-- check-in/check-out screenshot
-- MongoDB collection screenshot
-- short demo video link
+| Flow | Screenshot |
+| --- | --- |
+| Login | `docs/screenshots/login.png` |
+| Dashboard | `docs/screenshots/dashboard.png` |
+| Appointment approval | `docs/screenshots/appointment-approval.png` |
+| Pass issuance and PDF badge | `docs/screenshots/pass-issuance.png` |
+| QR scan, check-in, and check-out | `docs/screenshots/check-in-out.png` |
+
+Also include a short demo video link if your submission form provides a place for it.
 
 ## Bonus Points Covered
 
@@ -185,6 +194,7 @@ For final submission, include:
 
 ## Notes
 
-- Email and SMS notifications are currently stubbed for demo purposes.
+- Email requires real SMTP settings in the backend environment.
+- SMS requires real Twilio settings in the backend environment.
 - The live backend may take a few seconds to respond on the first request because Render free instances can sleep.
 - The frontend uses SPA routing, so direct refresh on routes like `/login` and `/register` is supported through Vercel rewrite rules.

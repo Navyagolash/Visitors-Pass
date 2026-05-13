@@ -41,8 +41,10 @@ export const listPasses = asyncHandler(async (req, res) => {
 });
 
 export const issuePass = asyncHandler(async (req, res) => {
+  const { appointmentId } = req.body;
+
   const appointment = await Appointment.findOne({
-    _id: req.body.appointmentId,
+    _id: appointmentId,
     organizationId: req.user.organizationId
   })
     .populate("visitorId", "fullName")
@@ -68,15 +70,14 @@ export const issuePass = asyncHandler(async (req, res) => {
     throw new Error("A pass has already been issued for this appointment");
   }
 
-  // I generate the QR first because I want the exact same value to be shown in the UI and embedded inside the PDF badge.
   const passCode = `VP-${nanoid(8).toUpperCase()}`;
-  const payload = {
+  const qrPayload = {
     passCode,
-    appointmentId: appointment._id,
-    organizationId: appointment.organizationId
+    appointmentId: String(appointment._id),
+    visitorName: appointment.visitorId.fullName
   };
+  const qrImage = await buildQrDataUrl(qrPayload);
 
-  const qrImage = await buildQrDataUrl(payload);
   const badgePdf = await buildBadgePdfBuffer({
     passCode,
     visitorName: appointment.visitorId.fullName,
@@ -93,7 +94,7 @@ export const issuePass = asyncHandler(async (req, res) => {
     hostId: appointment.hostId._id,
     validFrom: appointment.visitDate,
     validUntil: new Date(new Date(appointment.visitDate).getTime() + 8 * 60 * 60 * 1000),
-    qrPayload: JSON.stringify(payload),
+    qrPayload: JSON.stringify(qrPayload),
     qrImage,
     badgePdfBase64: badgePdf.toString("base64")
   });
@@ -115,7 +116,6 @@ export const verifyPass = asyncHandler(async (req, res) => {
     throw new Error("Pass not found");
   }
 
-  // A visitor cannot keep using an old pass forever, so I update the status here when the time window is over.
   if (new Date() > new Date(pass.validUntil) && pass.status !== PASS_STATUS.CHECKED_OUT) {
     pass.status = PASS_STATUS.EXPIRED;
     await pass.save();

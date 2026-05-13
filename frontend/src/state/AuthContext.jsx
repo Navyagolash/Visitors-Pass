@@ -2,16 +2,34 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { apiFetch } from "../api";
 
 const AuthContext = createContext(null);
+const TOKEN_KEY = "vms_token";
+const USER_KEY = "vms_user";
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    const stored = localStorage.getItem("vms_user");
-    return stored ? JSON.parse(stored) : null;
-  });
-  const [loading, setLoading] = useState(Boolean(localStorage.getItem("vms_token")));
+  const readStoredUser = () => {
+    const storedValue = localStorage.getItem(USER_KEY);
+    return storedValue ? JSON.parse(storedValue) : null;
+  };
+
+  const saveSession = (userData, token) => {
+    localStorage.setItem(TOKEN_KEY, token);
+    localStorage.setItem(USER_KEY, JSON.stringify(userData));
+    setUser(userData);
+  };
+
+  const clearSession = () => {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    setUser(null);
+  };
+
+  const [user, setUser] = useState(readStoredUser);
+  const [loading, setLoading] = useState(Boolean(localStorage.getItem(TOKEN_KEY)));
 
   useEffect(() => {
-    const token = localStorage.getItem("vms_token");
+    // If a token already exists, I ask the backend for the current user profile.
+    // That keeps the page in sync even after a refresh.
+    const token = localStorage.getItem(TOKEN_KEY);
     if (!token) {
       setLoading(false);
       return;
@@ -19,11 +37,7 @@ export function AuthProvider({ children }) {
 
     apiFetch("/auth/me")
       .then((profile) => setUser(profile))
-      .catch(() => {
-        localStorage.removeItem("vms_token");
-        localStorage.removeItem("vms_user");
-        setUser(null);
-      })
+      .catch(() => clearSession())
       .finally(() => setLoading(false));
   }, []);
 
@@ -33,9 +47,7 @@ export function AuthProvider({ children }) {
       body: JSON.stringify(payload)
     });
 
-    localStorage.setItem("vms_token", data.token);
-    localStorage.setItem("vms_user", JSON.stringify(data.user));
-    setUser(data.user);
+    saveSession(data.user, data.token);
   };
 
   const register = async (payload) => {
@@ -44,15 +56,11 @@ export function AuthProvider({ children }) {
       body: JSON.stringify(payload)
     });
 
-    localStorage.setItem("vms_token", data.token);
-    localStorage.setItem("vms_user", JSON.stringify(data.user));
-    setUser(data.user);
+    saveSession(data.user, data.token);
   };
 
   const logout = () => {
-    localStorage.removeItem("vms_token");
-    localStorage.removeItem("vms_user");
-    setUser(null);
+    clearSession();
   };
 
   return (

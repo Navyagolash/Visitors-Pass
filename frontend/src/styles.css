@@ -189,6 +189,12 @@ table th {
   gap: 14px;
 }
 
+.grid.three {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
 label {
   display: grid;
   gap: 8px;
@@ -204,6 +210,16 @@ textarea {
   color: #f4efe8;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.field-error {
+  color: #ff9ab0;
+  font-size: 0.82rem;
+}
+
+.form-hint {
+  color: rgba(244, 239, 232, 0.68);
+  font-size: 0.82rem;
 }
 
 table {
@@ -269,6 +285,10 @@ td {
   border-radius: 22px;
   display: grid;
   gap: 16px;
+}
+
+.pass-card[role="button"] {
+  cursor: pointer;
 }
 
 .pass-card img,
@@ -341,6 +361,12 @@ td {
   place-items: center;
   background: rgba(5, 8, 15, 0.52);
   backdrop-filter: blur(6px);
+}
+
+.scanner-wrap {
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .api-loader-card {
@@ -443,6 +469,7 @@ td {
 
   .dashboard-grid,
   .grid.two,
+  .grid.three,
   .hero-grid {
     grid-template-columns: 1fr;
   }

@@ -86,30 +86,36 @@ export const createAppointment = asyncHandler(async (req, res) => {
 export const updateAppointmentStatus = asyncHandler(async (req, res) => {
   const { status, approvalNote } = req.body;
 
+  if (!Object.values(APPOINTMENT_STATUS).includes(status)) {
+    res.status(400);
+    throw new Error("Choose a valid appointment status");
+  }
+
   const appointment = await Appointment.findOne({
     _id: req.params.id,
     organizationId: req.user.organizationId
-  }).populate("visitorId", "fullName email phone");
+  })
+    .populate("visitorId", "fullName email phone")
+    .populate("hostId", "_id");
 
   if (!appointment) {
     res.status(404);
     throw new Error("Appointment not found");
   }
 
-  // I keep this permission check explicit because this was one of the mentor comments.
-  // Admin and security can approve any appointment, while an employee can only act on their own host records.
-  const canModerate =
-    req.user.role === ROLES.ADMIN ||
-    req.user.role === ROLES.SECURITY ||
-    String(appointment.hostId) === String(req.user._id);
+  const isManager = req.user.role === ROLES.ADMIN || req.user.role === ROLES.SECURITY;
+  const isAppointmentHost = String(appointment.hostId._id) === String(req.user._id);
 
-  if (!canModerate) {
+  if (!isManager && !isAppointmentHost) {
     res.status(403);
     throw new Error("You cannot update this appointment");
   }
 
-  appointment.status = status ?? appointment.status;
-  appointment.approvalNote = approvalNote ?? appointment.approvalNote;
+  appointment.status = status;
+  if (approvalNote) {
+    appointment.approvalNote = approvalNote;
+  }
+
   await appointment.save();
 
   await sendEmailNotification({

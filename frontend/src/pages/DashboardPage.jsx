@@ -1,12 +1,17 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { apiFetch } from "../api";
-import { SectionCard } from "../components/SectionCard";
 import { StatCard } from "../components/StatCard";
 import { ToastMessage } from "../components/ToastMessage";
 import { useAuth } from "../state/AuthContext";
+import { AppointmentFormSection } from "../components/dashboard/AppointmentFormSection";
+import { AppointmentsSection } from "../components/dashboard/AppointmentsSection";
+import { DashboardFilters } from "../components/dashboard/DashboardFilters";
+import { IssuedPassesSection } from "../components/dashboard/IssuedPassesSection";
+import { PassScannerSection } from "../components/dashboard/PassScannerSection";
+import { VisitorFormSection } from "../components/dashboard/VisitorFormSection";
 
-const appointmentSeed = {
+const emptyAppointmentForm = {
   visitorId: "",
   hostId: "",
   visitDate: "",
@@ -14,19 +19,71 @@ const appointmentSeed = {
   notes: ""
 };
 
-const visitorSeed = {
+const emptyVisitorForm = {
   fullName: "",
   email: "",
   phone: "",
   company: "",
   purpose: "",
-  photoUrl: ""
+  photoUrl: "",
+  photoFile: null
+};
+
+const emptyFilters = {
+  q: "",
+  company: "",
+  status: "",
+  hostId: "",
+  dateFrom: "",
+  dateTo: ""
+};
+
+const buildQueryString = (filters) => {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value) {
+      params.set(key, value);
+    }
+  });
+  return params.toString();
+};
+
+const isEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+const isPhone = (value) => /^\+?[0-9]{10,15}$/.test(value.replace(/\s/g, ""));
+
+const validateVisitorForm = (form) => {
+  const errors = {};
+
+  if (!form.fullName.trim()) errors.fullName = "Full name is required.";
+  if (!form.company.trim()) errors.company = "Company is required.";
+  if (!isEmail(form.email)) errors.email = "Enter a valid email address.";
+  if (!isPhone(form.phone)) errors.phone = "Enter a valid phone number.";
+  if (!form.purpose.trim()) errors.purpose = "Purpose is required.";
+
+  if (form.photoFile) {
+    if (!form.photoFile.type.startsWith("image/")) errors.photoFile = "Upload an image file.";
+    if (form.photoFile.size > 2 * 1024 * 1024) errors.photoFile = "Photo must be under 2 MB.";
+  }
+
+  return errors;
+};
+
+const validateAppointmentForm = (form) => {
+  const errors = {};
+
+  if (!form.visitorId) errors.visitorId = "Choose a visitor.";
+  if (!form.hostId) errors.hostId = "Choose a host.";
+  if (!form.visitDate) errors.visitDate = "Choose a visit date and time.";
+  if (!form.purpose.trim()) errors.purpose = "Purpose is required.";
+
+  return errors;
 };
 
 export function DashboardPage() {
   const { user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+
   const [visitors, setVisitors] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [passes, setPasses] = useState([]);
@@ -35,18 +92,26 @@ export function DashboardPage() {
     pendingAppointments: 0,
     approvedAppointments: 0
   });
-  const [visitorForm, setVisitorForm] = useState(visitorSeed);
-  const [appointmentForm, setAppointmentForm] = useState(appointmentSeed);
   const [users, setUsers] = useState([]);
+  const [visitorForm, setVisitorForm] = useState(emptyVisitorForm);
+  const [appointmentForm, setAppointmentForm] = useState(emptyAppointmentForm);
+  const [filters, setFilters] = useState(emptyFilters);
   const [passCode, setPassCode] = useState("");
   const [verifiedPass, setVerifiedPass] = useState(null);
   const [toast, setToast] = useState(null);
   const [busyAction, setBusyAction] = useState("");
-  const loadData = async () => {
+  const [visitorErrors, setVisitorErrors] = useState({});
+  const [appointmentErrors, setAppointmentErrors] = useState({});
+  const [passError, setPassError] = useState("");
+
+  const loadDashboardData = async (filterValues = filters) => {
+    const queryString = buildQueryString(filterValues);
+    const suffix = queryString ? `?${queryString}` : "";
+
     const [visitorData, appointmentData, passData] = await Promise.all([
-      apiFetch("/visitors"),
-      apiFetch("/appointments"),
-      apiFetch("/passes")
+      apiFetch(`/visitors${suffix}`),
+      apiFetch(`/appointments${suffix}`),
+      apiFetch(`/passes${suffix}`)
     ]);
 
     setVisitors(visitorData);
@@ -66,7 +131,9 @@ export function DashboardPage() {
   };
 
   useEffect(() => {
-    loadData().catch((error) => setToast({ type: "error", title: "Load failed", text: error.message }));
+    loadDashboardData().catch((error) => {
+      setToast({ type: "error", title: "Load failed", text: error.message });
+    });
   }, []);
 
   useEffect(() => {
@@ -79,6 +146,17 @@ export function DashboardPage() {
   }, [location, navigate]);
 
   useEffect(() => {
+    const storedUser = localStorage.getItem("vms_user");
+    if (!storedUser) {
+      return;
+    }
+
+    const currentUser = JSON.parse(storedUser);
+    setUsers([currentUser]);
+    setAppointmentForm((current) => ({ ...current, hostId: currentUser.id || currentUser._id }));
+  }, []);
+
+  useEffect(() => {
     if (!toast) {
       return undefined;
     }
@@ -87,26 +165,66 @@ export function DashboardPage() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  useEffect(() => {
-    const storedUser = localStorage.getItem("vms_user");
-    if (storedUser) {
-      const currentUser = JSON.parse(storedUser);
-      setUsers([currentUser]);
-      setAppointmentForm((form) => ({ ...form, hostId: currentUser.id || currentUser._id }));
-    }
-  }, []);
+  const handleVisitorFieldChange = (field, value) => {
+    setVisitorForm((current) => ({ ...current, [field]: value }));
+    setVisitorErrors((current) => ({ ...current, [field]: "" }));
+  };
+
+  const handleAppointmentFieldChange = (field, value) => {
+    setAppointmentForm((current) => ({ ...current, [field]: value }));
+    setAppointmentErrors((current) => ({ ...current, [field]: "" }));
+  };
+
+  const handleFilterChange = (field, value) => {
+    const nextFilters = { ...filters, [field]: value };
+    setFilters(nextFilters);
+    loadDashboardData(nextFilters).catch((error) => {
+      setToast({ type: "error", title: "Filter failed", text: error.message });
+    });
+  };
+
+  const resetFilters = () => {
+    setFilters(emptyFilters);
+    loadDashboardData(emptyFilters).catch((error) => {
+      setToast({ type: "error", title: "Filter failed", text: error.message });
+    });
+  };
 
   const createVisitor = async (event) => {
     event.preventDefault();
+    const errors = validateVisitorForm(visitorForm);
+
+    if (Object.keys(errors).length > 0) {
+      setVisitorErrors(errors);
+      setToast({ type: "error", title: "Check visitor form", text: "Fix the highlighted fields before saving." });
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("fullName", visitorForm.fullName);
+    formData.append("email", visitorForm.email);
+    formData.append("phone", visitorForm.phone);
+    formData.append("company", visitorForm.company);
+    formData.append("purpose", visitorForm.purpose);
+    if (visitorForm.photoUrl) {
+      formData.append("photoUrl", visitorForm.photoUrl);
+    }
+    if (visitorForm.photoFile) {
+      formData.append("photo", visitorForm.photoFile);
+    }
+
     try {
       setBusyAction("create-visitor");
       await apiFetch("/visitors", {
         method: "POST",
-        body: JSON.stringify(visitorForm)
+        body: formData
       });
-      setVisitorForm(visitorSeed);
+      setVisitorForm(emptyVisitorForm);
+      setVisitorErrors({});
       setToast({ type: "success", title: "Visitor saved", text: "Visitor registered successfully." });
-      loadData();
+      await loadDashboardData();
+    } catch (error) {
+      setToast({ type: "error", title: "Visitor save failed", text: error.message });
     } finally {
       setBusyAction("");
     }
@@ -114,25 +232,39 @@ export function DashboardPage() {
 
   const createAppointment = async (event) => {
     event.preventDefault();
+    const errors = validateAppointmentForm(appointmentForm);
+
+    if (Object.keys(errors).length > 0) {
+      setAppointmentErrors(errors);
+      setToast({ type: "error", title: "Check appointment form", text: "Fix the highlighted fields before creating." });
+      return;
+    }
+
     try {
       setBusyAction("create-appointment");
       await apiFetch("/appointments", {
         method: "POST",
         body: JSON.stringify(appointmentForm)
       });
-      setAppointmentForm({ ...appointmentSeed, hostId: appointmentForm.hostId });
+      setAppointmentForm({
+        ...emptyAppointmentForm,
+        hostId: appointmentForm.hostId
+      });
       setToast({
         type: "success",
         title: "Appointment created",
         text: "Appointment created and notification triggered."
       });
-      loadData();
+      setAppointmentErrors({});
+      await loadDashboardData();
+    } catch (error) {
+      setToast({ type: "error", title: "Appointment failed", text: error.message });
     } finally {
       setBusyAction("");
     }
   };
 
-  const approveAppointment = async (appointmentId, status) => {
+  const updateAppointmentStatus = async (appointmentId, status) => {
     try {
       setBusyAction(`appointment-${appointmentId}-${status}`);
       await apiFetch(`/appointments/${appointmentId}/status`, {
@@ -140,7 +272,9 @@ export function DashboardPage() {
         body: JSON.stringify({ status })
       });
       setToast({ type: "success", title: "Appointment updated", text: `Appointment ${status}.` });
-      loadData();
+      await loadDashboardData();
+    } catch (error) {
+      setToast({ type: "error", title: "Update failed", text: error.message });
     } finally {
       setBusyAction("");
     }
@@ -156,29 +290,37 @@ export function DashboardPage() {
       setPassCode(pass.passCode);
       setVerifiedPass(pass);
       setToast({ type: "success", title: "Pass issued", text: "Visitor pass issued." });
-      loadData();
+      await loadDashboardData();
+    } catch (error) {
+      setToast({ type: "error", title: "Pass issue failed", text: error.message });
     } finally {
       setBusyAction("");
     }
   };
 
   const verifyPass = async (code = passCode) => {
-    if (!code) {
-      setToast({ type: "error", title: "Pass code required", text: "Enter or select a pass code first." });
-      return null;
+    const cleanCode = code.trim();
+
+    if (!cleanCode) {
+      setPassError("Enter or scan a pass code first.");
+      setToast({ type: "error", title: "Pass code required", text: "Enter or scan a pass code first." });
+      return;
     }
 
     try {
       setBusyAction("verify-pass");
-      const data = await apiFetch(`/passes/verify/${code}`);
-      setVerifiedPass(data);
-      setPassCode(data.passCode);
+      const pass = await apiFetch(`/passes/verify/${cleanCode}`);
+      setPassCode(pass.passCode);
+      setVerifiedPass(pass);
+      setPassError("");
       setToast({
         type: "success",
         title: "Pass verified",
-        text: `Pass ${data.passCode} verified successfully.`
+        text: `Pass ${pass.passCode} verified successfully.`
       });
-      return data;
+    } catch (error) {
+      setPassError(error.message);
+      setToast({ type: "error", title: "Verify failed", text: error.message });
     } finally {
       setBusyAction("");
     }
@@ -187,11 +329,8 @@ export function DashboardPage() {
   const scanPass = async (action) => {
     const activeCode = verifiedPass?.passCode || passCode;
     if (!activeCode) {
-      setToast({
-        type: "error",
-        title: "Verify pass first",
-        text: "Verify or select a pass before scanning."
-      });
+      setPassError("Verify or scan a pass before check-in or check-out.");
+      setToast({ type: "error", title: "Verify pass first", text: "Verify or scan a pass before check-in or check-out." });
       return;
     }
 
@@ -204,18 +343,15 @@ export function DashboardPage() {
       setToast({
         type: "success",
         title: action === "check_in" ? "Checked in" : "Checked out",
-        text: `Pass ${action === "check_in" ? "checked in" : "checked out"}.`
+        text: action === "check_in" ? "Visitor checked in successfully." : "Visitor checked out successfully."
       });
       await verifyPass(activeCode);
-      loadData();
+      await loadDashboardData();
+    } catch (error) {
+      setToast({ type: "error", title: "Scan failed", text: error.message });
     } finally {
       setBusyAction("");
     }
-  };
-
-  const selectPass = async (code) => {
-    setPassCode(code);
-    await verifyPass(code);
   };
 
   const exportLogs = async () => {
@@ -230,6 +366,8 @@ export function DashboardPage() {
       link.click();
       URL.revokeObjectURL(url);
       setToast({ type: "success", title: "Export complete", text: "Check logs exported successfully." });
+    } catch (error) {
+      setToast({ type: "error", title: "Export failed", text: error.message });
     } finally {
       setBusyAction("");
     }
@@ -238,13 +376,13 @@ export function DashboardPage() {
   return (
     <div className="dashboard">
       <ToastMessage toast={toast} onClose={() => setToast(null)} />
+
       <header className="hero-card">
         <div>
           <p className="eyebrow">MERN Assignment</p>
           <h2>Digital visitor operations for organizations</h2>
           <p className="muted">
-            Covers authentication, visitor onboarding, appointments, QR-based pass issuance, and
-            check-in/check-out logging.
+            Covers authentication, visitor onboarding, appointments, QR-based pass issuance, and check-in/check-out logging.
           </p>
         </div>
         <div className="hero-grid">
@@ -254,234 +392,51 @@ export function DashboardPage() {
         </div>
       </header>
 
-      <div className="dashboard-grid">
-        <SectionCard
-          title="Register Visitor"
-          subtitle="Pre-register a visitor with contact details and photo reference."
-        >
-          <form className="stack" onSubmit={createVisitor}>
-            <div className="grid two">
-              <label>
-                Full Name
-                <input
-                  value={visitorForm.fullName}
-                  onChange={(e) => setVisitorForm({ ...visitorForm, fullName: e.target.value })}
-                />
-              </label>
-              <label>
-                Company
-                <input
-                  value={visitorForm.company}
-                  onChange={(e) => setVisitorForm({ ...visitorForm, company: e.target.value })}
-                />
-              </label>
-            </div>
-            <div className="grid two">
-              <label>
-                Email
-                <input
-                  value={visitorForm.email}
-                  onChange={(e) => setVisitorForm({ ...visitorForm, email: e.target.value })}
-                />
-              </label>
-              <label>
-                Phone
-                <input
-                  value={visitorForm.phone}
-                  onChange={(e) => setVisitorForm({ ...visitorForm, phone: e.target.value })}
-                />
-              </label>
-            </div>
-            <label>
-              Purpose
-              <input
-                value={visitorForm.purpose}
-                onChange={(e) => setVisitorForm({ ...visitorForm, purpose: e.target.value })}
-              />
-            </label>
-            <label>
-              Photo URL
-              <input
-                value={visitorForm.photoUrl}
-                onChange={(e) => setVisitorForm({ ...visitorForm, photoUrl: e.target.value })}
-              />
-            </label>
-            <button className="primary-button" type="submit" disabled={busyAction === "create-visitor"}>
-              {busyAction === "create-visitor" ? "Saving..." : "Save Visitor"}
-            </button>
-          </form>
-        </SectionCard>
+      <DashboardFilters filters={filters} users={users} onChange={handleFilterChange} onReset={resetFilters} />
 
-        <SectionCard
-          title="Create Appointment"
-          subtitle="Invite a visitor for an approved meeting and notify them."
-        >
-          <form className="stack" onSubmit={createAppointment}>
-            <div className="grid two">
-              <label>
-                Visitor
-                <select
-                  value={appointmentForm.visitorId}
-                  onChange={(e) => setAppointmentForm({ ...appointmentForm, visitorId: e.target.value })}
-                >
-                  <option value="">Select visitor</option>
-                  {visitors.map((visitor) => (
-                    <option key={visitor._id} value={visitor._id}>
-                      {visitor.fullName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Host
-                <select
-                  value={appointmentForm.hostId}
-                  onChange={(e) => setAppointmentForm({ ...appointmentForm, hostId: e.target.value })}
-                >
-                  <option value="">Select host</option>
-                  {users.map((host) => (
-                    <option key={host.id || host._id} value={host.id || host._id}>
-                      {host.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <label>
-              Visit Date & Time
-              <input
-                type="datetime-local"
-                value={appointmentForm.visitDate}
-                onChange={(e) => setAppointmentForm({ ...appointmentForm, visitDate: e.target.value })}
-              />
-            </label>
-            <label>
-              Purpose
-              <input
-                value={appointmentForm.purpose}
-                onChange={(e) => setAppointmentForm({ ...appointmentForm, purpose: e.target.value })}
-              />
-            </label>
-            <label>
-              Notes
-              <textarea
-                rows="3"
-                value={appointmentForm.notes}
-                onChange={(e) => setAppointmentForm({ ...appointmentForm, notes: e.target.value })}
-              />
-            </label>
-            <button className="primary-button" type="submit" disabled={busyAction === "create-appointment"}>
-              {busyAction === "create-appointment" ? "Creating..." : "Create Appointment"}
-            </button>
-          </form>
-        </SectionCard>
+      <div className="dashboard-grid">
+        <VisitorFormSection
+          form={visitorForm}
+          errors={visitorErrors}
+          busy={busyAction === "create-visitor"}
+          onChange={handleVisitorFieldChange}
+          onFileChange={(file) => handleVisitorFieldChange("photoFile", file)}
+          onSubmit={createVisitor}
+        />
+        <AppointmentFormSection
+          form={appointmentForm}
+          errors={appointmentErrors}
+          visitors={visitors}
+          users={users}
+          busy={busyAction === "create-appointment"}
+          onChange={handleAppointmentFieldChange}
+          onSubmit={createAppointment}
+        />
       </div>
 
       <div className="dashboard-grid">
-        <SectionCard title="Appointments Queue" subtitle="Approve requests and generate visitor passes.">
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Visitor</th>
-                  <th>Host</th>
-                  <th>Date</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {appointments.map((appointment) => (
-                  <tr key={appointment._id}>
-                    <td>{appointment.visitorId?.fullName}</td>
-                    <td>{appointment.hostId?.name}</td>
-                    <td>{new Date(appointment.visitDate).toLocaleString()}</td>
-                    <td>
-                      <span className={`status-pill ${appointment.status}`}>{appointment.status}</span>
-                    </td>
-                    <td className="table-actions">
-                      <button
-                        className="ghost-button"
-                        disabled={busyAction === `appointment-${appointment._id}-approved`}
-                        onClick={() => approveAppointment(appointment._id, "approved")}
-                      >
-                        {busyAction === `appointment-${appointment._id}-approved` ? "Approving..." : "Approve"}
-                      </button>
-                      <button
-                        className="ghost-button"
-                        disabled={busyAction === `appointment-${appointment._id}-rejected`}
-                        onClick={() => approveAppointment(appointment._id, "rejected")}
-                      >
-                        {busyAction === `appointment-${appointment._id}-rejected` ? "Rejecting..." : "Reject"}
-                      </button>
-                      {appointment.status === "approved" ? (
-                        <button
-                          className="primary-button"
-                          disabled={busyAction === `issue-pass-${appointment._id}`}
-                          onClick={() => issuePass(appointment._id)}
-                        >
-                          {busyAction === `issue-pass-${appointment._id}` ? "Issuing..." : "Issue Pass"}
-                        </button>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </SectionCard>
-
-        <SectionCard title="Pass Scanner" subtitle="Verify a pass code and process entry or exit.">
-          <div className="stack">
-            <label>
-              Pass Code
-              <input value={passCode} onChange={(e) => setPassCode(e.target.value.toUpperCase())} />
-            </label>
-            <div className="inline-actions">
-              <button className="primary-button" disabled={busyAction === "verify-pass"} onClick={verifyPass}>
-                {busyAction === "verify-pass" ? "Verifying..." : "Verify Pass"}
-              </button>
-              <button className="ghost-button" disabled={busyAction === "check_in"} onClick={() => scanPass("check_in")}>
-                {busyAction === "check_in" ? "Checking In..." : "Check In"}
-              </button>
-              <button className="ghost-button" disabled={busyAction === "check_out"} onClick={() => scanPass("check_out")}>
-                {busyAction === "check_out" ? "Checking Out..." : "Check Out"}
-              </button>
-              <button className="ghost-button link-button" disabled={busyAction === "export-logs"} onClick={exportLogs}>
-                {busyAction === "export-logs" ? "Exporting..." : "Export Logs"}
-              </button>
-            </div>
-
-            {verifiedPass ? (
-              <div className="pass-preview">
-                <div>
-                  <h4>{verifiedPass.visitorId?.fullName}</h4>
-                  <p className="muted">Host: {verifiedPass.hostId?.name}</p>
-                  <p className="muted">Status: {verifiedPass.status}</p>
-                  <p className="muted">Code: {verifiedPass.passCode}</p>
-                </div>
-                {verifiedPass.qrImage ? <img src={verifiedPass.qrImage} alt="QR pass" /> : null}
-              </div>
-            ) : null}
-          </div>
-        </SectionCard>
+        <AppointmentsSection
+          appointments={appointments}
+          busyAction={busyAction}
+          onApprove={updateAppointmentStatus}
+          onIssuePass={issuePass}
+        />
+        <PassScannerSection
+          passCode={passCode}
+          error={passError}
+          verifiedPass={verifiedPass}
+          busyAction={busyAction}
+          onPassCodeChange={(value) => {
+            setPassCode(value);
+            setPassError("");
+          }}
+          onVerify={() => verifyPass()}
+          onScanAction={scanPass}
+          onExportLogs={exportLogs}
+        />
       </div>
 
-      <SectionCard title="Issued Passes" subtitle="Digital badges generated for visitors.">
-        <div className="pass-grid">
-          {passes.map((pass) => (
-            <article className="pass-card" key={pass._id} onClick={() => selectPass(pass.passCode)} role="button" tabIndex={0}>
-              <div>
-                <p className="eyebrow">{pass.passCode}</p>
-                <h4>{pass.visitorId?.fullName}</h4>
-                <p className="muted">{pass.appointmentId?.purpose}</p>
-                <span className={`status-pill ${pass.status}`}>{pass.status}</span>
-              </div>
-              {pass.qrImage ? <img src={pass.qrImage} alt={pass.passCode} /> : <div className="qr-fallback">QR</div>}
-            </article>
-          ))}
-        </div>
-      </SectionCard>
+      <IssuedPassesSection passes={passes} onSelectPass={(code) => verifyPass(code)} />
     </div>
   );
 }

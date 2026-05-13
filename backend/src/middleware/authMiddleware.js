@@ -3,15 +3,13 @@ import { User } from "../models/User.js";
 
 export const protect = async (req, res, next) => {
   try {
-    const headerValue = req.headers.authorization || "";
-    const parts = headerValue.split(" ");
-    const hasBearerToken = parts.length === 2 && parts[0] === "Bearer" && parts[1];
+    const authHeader = req.headers.authorization;
 
-    if (!hasBearerToken) {
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return res.status(401).json({ message: "Please login first" });
     }
 
-    const token = parts[1];
+    const token = authHeader.split(" ")[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.id).select("-password");
 
