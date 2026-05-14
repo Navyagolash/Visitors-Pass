@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ToastMessage } from "../components/ToastMessage";
+import { demoCredentials } from "../config/demoCredentials";
 import { useAuth } from "../state/AuthContext";
 
 export function LoginPage() {
   const navigate = useNavigate();
   const { login } = useAuth();
-  const [form, setForm] = useState({ email: "admin@acme.com", password: "Password123!" });
+  const [form, setForm] = useState({ email: demoCredentials.email, password: demoCredentials.password });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState(null);
@@ -49,7 +50,11 @@ export function LoginPage() {
       <form className="auth-card" onSubmit={handleSubmit}>
         <p className="eyebrow">Assignment Demo</p>
         <h1>Sign in to Visitor Pass Manager</h1>
-        <p className="muted">Use seeded credentials like `admin@acme.com / Password123!`.</p>
+        {demoCredentials.email ? (
+          <p className="muted">Demo login is filled from the frontend environment file.</p>
+        ) : (
+          <p className="muted">Enter the account created from registration or seed data.</p>
+        )}
         <label>
           Email
           <input

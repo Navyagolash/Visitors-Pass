@@ -43,6 +43,7 @@ export const listPasses = asyncHandler(async (req, res) => {
 export const issuePass = asyncHandler(async (req, res) => {
   const { appointmentId } = req.body;
 
+  // A pass should only be issued for an appointment from the logged-in user's organization.
   const appointment = await Appointment.findOne({
     _id: appointmentId,
     organizationId: req.user.organizationId
@@ -70,7 +71,11 @@ export const issuePass = asyncHandler(async (req, res) => {
     throw new Error("A pass has already been issued for this appointment");
   }
 
+  // The pass code is the short value security staff can type manually.
   const passCode = `VP-${nanoid(8).toUpperCase()}`;
+
+  // This is the text stored inside the QR code.
+  // I include only the values needed to look up or recognize the pass.
   const qrPayload = {
     passCode,
     appointmentId: String(appointment._id),
@@ -78,6 +83,7 @@ export const issuePass = asyncHandler(async (req, res) => {
   };
   const qrImage = await buildQrDataUrl(qrPayload);
 
+  // The PDF badge is saved as base64 so the frontend can download it later.
   const badgePdf = await buildBadgePdfBuffer({
     passCode,
     visitorName: appointment.visitorId.fullName,
@@ -103,6 +109,7 @@ export const issuePass = asyncHandler(async (req, res) => {
 });
 
 export const verifyPass = asyncHandler(async (req, res) => {
+  // Security enters or scans a pass code, then this API returns the matching pass.
   const pass = await Pass.findOne({
     passCode: req.params.passCode,
     organizationId: req.user.organizationId
@@ -116,6 +123,7 @@ export const verifyPass = asyncHandler(async (req, res) => {
     throw new Error("Pass not found");
   }
 
+  // If the pass time is over, I mark it expired before sending it back.
   if (new Date() > new Date(pass.validUntil) && pass.status !== PASS_STATUS.CHECKED_OUT) {
     pass.status = PASS_STATUS.EXPIRED;
     await pass.save();
@@ -171,12 +179,14 @@ export const scanPass = asyncHandler(async (req, res) => {
 });
 
 export const exportLogs = asyncHandler(async (req, res) => {
+  // Exporting logs lets the admin submit or download a simple attendance record.
   const logs = await CheckLog.find({ organizationId: req.user.organizationId })
     .populate("visitorId", "fullName")
     .populate("scannedBy", "name")
     .populate("passId", "passCode")
     .sort({ occurredAt: -1 });
 
+  // I build the CSV row by row so each column is visible in the code.
   const rows = [
     ["Pass Code", "Visitor", "Action", "Location", "Scanned By", "Occurred At"].join(","),
     ...logs.map((log) =>

@@ -111,6 +111,8 @@ TWILIO_PHONE_NUMBER=+15551234567
 
 ```env
 VITE_API_URL=http://localhost:5000/api
+VITE_DEMO_EMAIL=
+VITE_DEMO_PASSWORD=
 ```
 
 ## Demo Credentials
@@ -196,5 +198,8 @@ Also include a short demo video link if your submission form provides a place fo
 
 - Email requires real SMTP settings in the backend environment.
 - SMS requires real Twilio settings in the backend environment.
+- Login demo credentials can be set with frontend environment variables instead of hardcoding them in code.
+- API requests have a timeout so the UI can show a clear error when the backend is slow or offline.
+- A React error boundary is included to show a friendly message if a screen crashes.
 - The live backend may take a few seconds to respond on the first request because Render free instances can sleep.
 - The frontend uses SPA routing, so direct refresh on routes like `/login` and `/register` is supported through Vercel rewrite rules.

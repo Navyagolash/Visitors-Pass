@@ -10,74 +10,14 @@ import { DashboardFilters } from "../components/dashboard/DashboardFilters";
 import { IssuedPassesSection } from "../components/dashboard/IssuedPassesSection";
 import { PassScannerSection } from "../components/dashboard/PassScannerSection";
 import { VisitorFormSection } from "../components/dashboard/VisitorFormSection";
-
-const emptyAppointmentForm = {
-  visitorId: "",
-  hostId: "",
-  visitDate: "",
-  purpose: "",
-  notes: ""
-};
-
-const emptyVisitorForm = {
-  fullName: "",
-  email: "",
-  phone: "",
-  company: "",
-  purpose: "",
-  photoUrl: "",
-  photoFile: null
-};
-
-const emptyFilters = {
-  q: "",
-  company: "",
-  status: "",
-  hostId: "",
-  dateFrom: "",
-  dateTo: ""
-};
-
-const buildQueryString = (filters) => {
-  const params = new URLSearchParams();
-  Object.entries(filters).forEach(([key, value]) => {
-    if (value) {
-      params.set(key, value);
-    }
-  });
-  return params.toString();
-};
-
-const isEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-const isPhone = (value) => /^\+?[0-9]{10,15}$/.test(value.replace(/\s/g, ""));
-
-const validateVisitorForm = (form) => {
-  const errors = {};
-
-  if (!form.fullName.trim()) errors.fullName = "Full name is required.";
-  if (!form.company.trim()) errors.company = "Company is required.";
-  if (!isEmail(form.email)) errors.email = "Enter a valid email address.";
-  if (!isPhone(form.phone)) errors.phone = "Enter a valid phone number.";
-  if (!form.purpose.trim()) errors.purpose = "Purpose is required.";
-
-  if (form.photoFile) {
-    if (!form.photoFile.type.startsWith("image/")) errors.photoFile = "Upload an image file.";
-    if (form.photoFile.size > 2 * 1024 * 1024) errors.photoFile = "Photo must be under 2 MB.";
-  }
-
-  return errors;
-};
-
-const validateAppointmentForm = (form) => {
-  const errors = {};
-
-  if (!form.visitorId) errors.visitorId = "Choose a visitor.";
-  if (!form.hostId) errors.hostId = "Choose a host.";
-  if (!form.visitDate) errors.visitDate = "Choose a visit date and time.";
-  if (!form.purpose.trim()) errors.purpose = "Purpose is required.";
-
-  return errors;
-};
+import {
+  buildQueryString,
+  emptyAppointmentForm,
+  emptyFilters,
+  emptyVisitorForm,
+  validateAppointmentForm,
+  validateVisitorForm
+} from "../utils/dashboardForms";
 
 export function DashboardPage() {
   const { user } = useAuth();

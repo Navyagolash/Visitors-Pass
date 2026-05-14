@@ -1,16 +1,21 @@
 import PDFDocument from "pdfkit";
 import QRCode from "qrcode";
 
-export const buildQrDataUrl = async (payload) =>
-  QRCode.toDataURL(JSON.stringify(payload), { margin: 1, width: 280 });
+export const buildQrDataUrl = async (payload) => {
+  // The QR library needs text, so I turn my pass object into JSON first.
+  return QRCode.toDataURL(JSON.stringify(payload), { margin: 1, width: 280 });
+};
 
 export const buildBadgePdfBuffer = async ({ passCode, visitorName, hostName, visitDate, qrImage }) =>
   new Promise((resolve) => {
     const doc = new PDFDocument({ size: "A6", margin: 24 });
     const chunks = [];
+
+    // PDFKit streams the PDF in chunks. I collect those chunks into one Buffer.
     doc.on("data", (chunk) => chunks.push(chunk));
     doc.on("end", () => resolve(Buffer.concat(chunks)));
 
+    // Badge header and basic visitor details.
     doc.roundedRect(16, 16, 266, 384, 18).fillAndStroke("#f8fbff", "#d6deea");
     doc.fillColor("#20304c").fontSize(18).text("Visitor Pass", 32, 32, { align: "center" });
     doc.fillColor("#ff5a7d").fontSize(12).text(passCode, 32, 64, { align: "center" });
@@ -24,6 +29,7 @@ export const buildBadgePdfBuffer = async ({ passCode, visitorName, hostName, vis
       doc.image(qrImage, 165, 112, { width: 88, height: 88 });
     }
 
+    // Small instruction text for the security desk.
     doc.moveTo(32, 226).lineTo(250, 226).strokeColor("#d6deea").stroke();
     doc.fillColor("#50627f").fontSize(10).text("Please show this pass at the front desk during check-in.", 32, 240, {
       width: 220,

@@ -86,6 +86,8 @@ export const createAppointment = asyncHandler(async (req, res) => {
 export const updateAppointmentStatus = asyncHandler(async (req, res) => {
   const { status, approvalNote } = req.body;
 
+  // I only allow statuses that exist in my constants file.
+  // This stops spelling mistakes like "approve" from being saved in MongoDB.
   if (!Object.values(APPOINTMENT_STATUS).includes(status)) {
     res.status(400);
     throw new Error("Choose a valid appointment status");
@@ -103,6 +105,8 @@ export const updateAppointmentStatus = asyncHandler(async (req, res) => {
     throw new Error("Appointment not found");
   }
 
+  // Admin/security staff can update any appointment.
+  // Employees can update only the appointment where they are the host.
   const isManager = req.user.role === ROLES.ADMIN || req.user.role === ROLES.SECURITY;
   const isAppointmentHost = String(appointment.hostId._id) === String(req.user._id);
 
@@ -135,17 +139,19 @@ export const updateAppointmentStatus = asyncHandler(async (req, res) => {
 });
 
 export const statsSummary = asyncHandler(async (req, res) => {
-  const [total, pending, approved] = await Promise.all([
-    Appointment.countDocuments({ organizationId: req.user.organizationId }),
-    Appointment.countDocuments({
-      organizationId: req.user.organizationId,
-      status: APPOINTMENT_STATUS.PENDING
-    }),
-    Appointment.countDocuments({
-      organizationId: req.user.organizationId,
-      status: APPOINTMENT_STATUS.APPROVED
-    })
-  ]);
+  const organizationId = req.user.organizationId;
 
-  res.json({ totalAppointments: total, pendingAppointments: pending, approvedAppointments: approved });
+  // These three counts feed the dashboard cards.
+  // I kept them separate so it is easy to understand what each card shows.
+  const totalAppointments = await Appointment.countDocuments({ organizationId });
+  const pendingAppointments = await Appointment.countDocuments({
+    organizationId,
+    status: APPOINTMENT_STATUS.PENDING
+  });
+  const approvedAppointments = await Appointment.countDocuments({
+    organizationId,
+    status: APPOINTMENT_STATUS.APPROVED
+  });
+
+  res.json({ totalAppointments, pendingAppointments, approvedAppointments });
 });
