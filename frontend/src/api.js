@@ -1,5 +1,5 @@
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-const REQUEST_TIMEOUT_MS = 15000;
+const REQUEST_TIMEOUT_MS = 60000;
 
 export async function apiFetch(path, options = {}) {
   const token = localStorage.getItem("vms_token");
@@ -25,7 +25,7 @@ export async function apiFetch(path, options = {}) {
     });
   } catch (error) {
     if (error.name === "AbortError") {
-      throw new Error("Request took too long. Please try again.");
+      throw new Error("Request took too long. The backend may still be starting. Please try again.");
     }
     throw new Error("Could not reach the server. Please check the backend.");
   } finally {
