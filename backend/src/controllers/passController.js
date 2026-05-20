@@ -40,97 +40,107 @@ export const listPasses = asyncHandler(async (req, res) => {
   res.json(filteredPasses);
 });
 
-export const issuePass = asyncHandler(async (req, res) => {
-  const { appointmentId } = req.body;
+export const issuePass = async (req, res) => {
+  try {
+    const appointmentId = req.body.appointmentId;
 
-  // A pass should only be issued for an appointment from the logged-in user's organization.
-  const appointment = await Appointment.findOne({
-    _id: appointmentId,
-    organizationId: req.user.organizationId
-  })
-    .populate("visitorId", "fullName")
-    .populate("hostId", "name");
+    // First I find the appointment. I also check organizationId so one organization
+    // cannot issue a pass for another organization's visitor.
+    const appointment = await Appointment.findOne({
+      _id: appointmentId,
+      organizationId: req.user.organizationId
+    })
+      .populate("visitorId", "fullName")
+      .populate("hostId", "name");
 
-  if (!appointment) {
-    res.status(404);
-    throw new Error("Appointment not found");
+    if (!appointment) {
+      return res.status(404).json({ message: "Appointment not found" });
+    }
+
+    if (appointment.status !== APPOINTMENT_STATUS.APPROVED) {
+      return res.status(400).json({ message: "Only approved appointments can receive passes" });
+    }
+
+    const oldPass = await Pass.findOne({
+      appointmentId: appointment._id,
+      organizationId: req.user.organizationId
+    });
+
+    if (oldPass) {
+      return res.status(400).json({ message: "A pass has already been issued for this appointment" });
+    }
+
+    const passCode = `VP-${nanoid(8).toUpperCase()}`;
+    console.log("Issuing pass for appointment", String(appointment._id));
+
+    // This object becomes the QR code text. When scanned, I can read the passCode
+    // and search the pass from the database.
+    const qrPayload = {
+      passCode,
+      appointmentId: String(appointment._id),
+      visitorName: appointment.visitorId.fullName
+    };
+    const qrImage = await buildQrDataUrl(qrPayload);
+
+    // PDFKit returns a file buffer. I convert it to base64 before storing
+    // because the frontend can easily turn base64 back into a downloadable PDF.
+    const badgePdf = await buildBadgePdfBuffer({
+      passCode,
+      visitorName: appointment.visitorId.fullName,
+      hostName: appointment.hostId.name,
+      visitDate: appointment.visitDate,
+      qrImage
+    });
+
+    const validUntil = new Date(appointment.visitDate);
+    validUntil.setHours(validUntil.getHours() + 8);
+
+    const pass = await Pass.create({
+      organizationId: req.user.organizationId,
+      passCode,
+      visitorId: appointment.visitorId._id,
+      appointmentId: appointment._id,
+      hostId: appointment.hostId._id,
+      validFrom: appointment.visitDate,
+      validUntil,
+      qrPayload: JSON.stringify(qrPayload),
+      qrImage,
+      badgePdfBase64: badgePdf.toString("base64")
+    });
+
+    return res.status(201).json(pass);
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
   }
+};
 
-  if (appointment.status !== APPOINTMENT_STATUS.APPROVED) {
-    res.status(400);
-    throw new Error("Only approved appointments can receive passes");
+export const verifyPass = async (req, res) => {
+  try {
+    // Security can type a code or scan a QR. Both finally send passCode here.
+    const pass = await Pass.findOne({
+      passCode: req.params.passCode,
+      organizationId: req.user.organizationId
+    })
+      .populate("visitorId", "fullName email phone")
+      .populate("hostId", "name")
+      .populate("appointmentId", "visitDate purpose");
+
+    if (!pass) {
+      return res.status(404).json({ message: "Pass not found" });
+    }
+
+    // I update expired passes here so the security screen shows the latest status.
+    if (new Date() > new Date(pass.validUntil) && pass.status !== PASS_STATUS.CHECKED_OUT) {
+      console.log("Pass expired during verification", pass.passCode);
+      pass.status = PASS_STATUS.EXPIRED;
+      await pass.save();
+    }
+
+    return res.json(pass);
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
   }
-
-  const existingPass = await Pass.findOne({
-    appointmentId: appointment._id,
-    organizationId: req.user.organizationId
-  });
-
-  if (existingPass) {
-    res.status(400);
-    throw new Error("A pass has already been issued for this appointment");
-  }
-
-  // The pass code is the short value security staff can type manually.
-  const passCode = `VP-${nanoid(8).toUpperCase()}`;
-
-  // This is the text stored inside the QR code.
-  // I include only the values needed to look up or recognize the pass.
-  const qrPayload = {
-    passCode,
-    appointmentId: String(appointment._id),
-    visitorName: appointment.visitorId.fullName
-  };
-  const qrImage = await buildQrDataUrl(qrPayload);
-
-  // The PDF badge is saved as base64 so the frontend can download it later.
-  const badgePdf = await buildBadgePdfBuffer({
-    passCode,
-    visitorName: appointment.visitorId.fullName,
-    hostName: appointment.hostId.name,
-    visitDate: appointment.visitDate,
-    qrImage
-  });
-
-  const pass = await Pass.create({
-    organizationId: req.user.organizationId,
-    passCode,
-    visitorId: appointment.visitorId._id,
-    appointmentId: appointment._id,
-    hostId: appointment.hostId._id,
-    validFrom: appointment.visitDate,
-    validUntil: new Date(new Date(appointment.visitDate).getTime() + 8 * 60 * 60 * 1000),
-    qrPayload: JSON.stringify(qrPayload),
-    qrImage,
-    badgePdfBase64: badgePdf.toString("base64")
-  });
-
-  res.status(201).json(pass);
-});
-
-export const verifyPass = asyncHandler(async (req, res) => {
-  // Security enters or scans a pass code, then this API returns the matching pass.
-  const pass = await Pass.findOne({
-    passCode: req.params.passCode,
-    organizationId: req.user.organizationId
-  })
-    .populate("visitorId", "fullName email phone")
-    .populate("hostId", "name")
-    .populate("appointmentId", "visitDate purpose");
-
-  if (!pass) {
-    res.status(404);
-    throw new Error("Pass not found");
-  }
-
-  // If the pass time is over, I mark it expired before sending it back.
-  if (new Date() > new Date(pass.validUntil) && pass.status !== PASS_STATUS.CHECKED_OUT) {
-    pass.status = PASS_STATUS.EXPIRED;
-    await pass.save();
-  }
-
-  res.json(pass);
-});
+};
 
 export const scanPass = asyncHandler(async (req, res) => {
   const { action, location, notes } = req.body;
@@ -178,30 +188,33 @@ export const scanPass = asyncHandler(async (req, res) => {
   res.json({ pass, log });
 });
 
-export const exportLogs = asyncHandler(async (req, res) => {
-  // Exporting logs lets the admin submit or download a simple attendance record.
-  const logs = await CheckLog.find({ organizationId: req.user.organizationId })
-    .populate("visitorId", "fullName")
-    .populate("scannedBy", "name")
-    .populate("passId", "passCode")
-    .sort({ occurredAt: -1 });
+export const exportLogs = async (req, res) => {
+  try {
+    const logs = await CheckLog.find({ organizationId: req.user.organizationId })
+      .populate("visitorId", "fullName")
+      .populate("scannedBy", "name")
+      .populate("passId", "passCode")
+      .sort({ occurredAt: -1 });
 
-  // I build the CSV row by row so each column is visible in the code.
-  const rows = [
-    ["Pass Code", "Visitor", "Action", "Location", "Scanned By", "Occurred At"].join(","),
-    ...logs.map((log) =>
-      [
-        log.passId?.passCode ?? "",
-        log.visitorId?.fullName ?? "",
-        log.action,
-        log.location ?? "",
-        log.scannedBy?.name ?? "",
-        new Date(log.occurredAt).toISOString()
-      ].join(",")
-    )
-  ];
+    // I am making the CSV manually so I understand every column in the export.
+    const rows = ["Pass Code,Visitor,Action,Location,Scanned By,Occurred At"];
+    logs.forEach((log) => {
+      rows.push(
+        [
+          log.passId?.passCode || "",
+          log.visitorId?.fullName || "",
+          log.action || "",
+          log.location || "",
+          log.scannedBy?.name || "",
+          new Date(log.occurredAt).toISOString()
+        ].join(",")
+      );
+    });
 
-  res.setHeader("Content-Type", "text/csv");
-  res.setHeader("Content-Disposition", "attachment; filename=check-logs.csv");
-  res.send(rows.join("\n"));
-});
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", "attachment; filename=check-logs.csv");
+    return res.send(rows.join("\n"));
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};

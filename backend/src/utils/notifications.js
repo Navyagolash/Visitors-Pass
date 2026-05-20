@@ -6,7 +6,7 @@ export const sendEmailNotification = async ({ to, subject, message }) => {
     throw new Error("SMTP settings are missing");
   }
 
-  const port = Number(process.env.SMTP_PORT || 587);
+  const port = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 587;
   const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port,

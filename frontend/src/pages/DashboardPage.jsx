@@ -134,6 +134,7 @@ export function DashboardPage() {
     event.preventDefault();
     const errors = validateVisitorForm(visitorForm);
 
+    // I validate on the client first so the user sees the mistake before an API call.
     if (Object.keys(errors).length > 0) {
       setVisitorErrors(errors);
       setToast({ type: "error", title: "Check visitor form", text: "Fix the highlighted fields before saving." });
@@ -141,6 +142,7 @@ export function DashboardPage() {
     }
 
     const formData = new FormData();
+    // Photo upload needs FormData. JSON cannot carry the file object correctly.
     formData.append("fullName", visitorForm.fullName);
     formData.append("email", visitorForm.email);
     formData.append("phone", visitorForm.phone);
@@ -241,6 +243,7 @@ export function DashboardPage() {
   const verifyPass = async (code = passCode) => {
     const cleanCode = code.trim();
 
+    // The scanner fills the same passCode field as manual typing.
     if (!cleanCode) {
       setPassError("Enter or scan a pass code first.");
       setToast({ type: "error", title: "Pass code required", text: "Enter or scan a pass code first." });

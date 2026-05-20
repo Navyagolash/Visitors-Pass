@@ -175,7 +175,7 @@ The seed script creates:
 
 ## Screenshots / Video
 
-Add the final submission captures under `docs/screenshots/`:
+Final submission captures are stored under `docs/screenshots/`:
 
 | Flow | Screenshot |
 | --- | --- |
@@ -185,7 +185,11 @@ Add the final submission captures under `docs/screenshots/`:
 | Pass issuance and PDF badge | `docs/screenshots/pass-issuance.png` |
 | QR scan, check-in, and check-out | `docs/screenshots/check-in-out.png` |
 
-Also include a short demo video link if your submission form provides a place for it.
+Demo video: add your recording link here before resubmission.
+
+## Learning Disclosure
+
+I used AI assistance during development to understand errors and compare implementation options. After mentor feedback, I rewrote the flagged controller, auth, notification, dashboard, and API sections in simpler code that I can explain myself. Comments are included near the role checks, JWT validation, QR payload, PDF badge creation, pass verification, and CSV export to show my understanding.
 
 ## Bonus Points Covered
 

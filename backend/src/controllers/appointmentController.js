@@ -83,75 +83,84 @@ export const createAppointment = asyncHandler(async (req, res) => {
   res.status(201).json(appointment);
 });
 
-export const updateAppointmentStatus = asyncHandler(async (req, res) => {
-  const { status, approvalNote } = req.body;
+export const updateAppointmentStatus = async (req, res) => {
+  try {
+    const status = req.body.status;
+    const approvalNote = req.body.approvalNote;
 
-  // I only allow statuses that exist in my constants file.
-  // This stops spelling mistakes like "approve" from being saved in MongoDB.
-  if (!Object.values(APPOINTMENT_STATUS).includes(status)) {
-    res.status(400);
-    throw new Error("Choose a valid appointment status");
-  }
+    // I am checking the status first because only these values are allowed in the model.
+    if (!Object.values(APPOINTMENT_STATUS).includes(status)) {
+      return res.status(400).json({ message: "Choose a valid appointment status" });
+    }
 
-  const appointment = await Appointment.findOne({
-    _id: req.params.id,
-    organizationId: req.user.organizationId
-  })
-    .populate("visitorId", "fullName email phone")
-    .populate("hostId", "_id");
+    const appointment = await Appointment.findOne({
+      _id: req.params.id,
+      organizationId: req.user.organizationId
+    })
+      .populate("visitorId", "fullName email phone")
+      .populate("hostId", "_id");
 
-  if (!appointment) {
-    res.status(404);
-    throw new Error("Appointment not found");
-  }
+    if (!appointment) {
+      return res.status(404).json({ message: "Appointment not found" });
+    }
 
-  // Admin/security staff can update any appointment.
-  // Employees can update only the appointment where they are the host.
-  const isManager = req.user.role === ROLES.ADMIN || req.user.role === ROLES.SECURITY;
-  const isAppointmentHost = String(appointment.hostId._id) === String(req.user._id);
+    // My rule: admin/security can approve all appointments.
+    // An employee can approve only when they are the host for this appointment.
+    let allowed = false;
+    if (req.user.role === ROLES.ADMIN || req.user.role === ROLES.SECURITY) {
+      allowed = true;
+    }
+    if (String(appointment.hostId._id) === String(req.user._id)) {
+      allowed = true;
+    }
 
-  if (!isManager && !isAppointmentHost) {
-    res.status(403);
-    throw new Error("You cannot update this appointment");
-  }
+    if (!allowed) {
+      console.log("Appointment status blocked for user", String(req.user._id));
+      return res.status(403).json({ message: "You cannot update this appointment" });
+    }
 
-  appointment.status = status;
-  if (approvalNote) {
-    appointment.approvalNote = approvalNote;
-  }
+    appointment.status = status;
+    if (approvalNote) {
+      appointment.approvalNote = approvalNote;
+    }
+    await appointment.save();
 
-  await appointment.save();
-
-  await sendEmailNotification({
-    to: appointment.visitorId.email,
-    subject: `Appointment ${appointment.status}`,
-    message: `Hi ${appointment.visitorId.fullName}, your appointment has been marked as ${appointment.status}.`
-  });
-
-  if (appointment.visitorId.phone) {
-    await sendSmsNotification({
-      to: appointment.visitorId.phone,
-      message: `Appointment status updated to ${appointment.status}.`
+    await sendEmailNotification({
+      to: appointment.visitorId.email,
+      subject: `Appointment ${appointment.status}`,
+      message: `Hi ${appointment.visitorId.fullName}, your appointment has been marked as ${appointment.status}.`
     });
+
+    if (appointment.visitorId.phone) {
+      await sendSmsNotification({
+        to: appointment.visitorId.phone,
+        message: `Appointment status updated to ${appointment.status}.`
+      });
+    }
+
+    return res.json(appointment);
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
   }
+};
 
-  res.json(appointment);
-});
+export const statsSummary = async (req, res) => {
+  try {
+    const organizationId = req.user.organizationId;
 
-export const statsSummary = asyncHandler(async (req, res) => {
-  const organizationId = req.user.organizationId;
+    // These are the three numbers I show at the top of the dashboard.
+    const totalAppointments = await Appointment.countDocuments({ organizationId });
+    const pendingAppointments = await Appointment.countDocuments({
+      organizationId,
+      status: APPOINTMENT_STATUS.PENDING
+    });
+    const approvedAppointments = await Appointment.countDocuments({
+      organizationId,
+      status: APPOINTMENT_STATUS.APPROVED
+    });
 
-  // These three counts feed the dashboard cards.
-  // I kept them separate so it is easy to understand what each card shows.
-  const totalAppointments = await Appointment.countDocuments({ organizationId });
-  const pendingAppointments = await Appointment.countDocuments({
-    organizationId,
-    status: APPOINTMENT_STATUS.PENDING
-  });
-  const approvedAppointments = await Appointment.countDocuments({
-    organizationId,
-    status: APPOINTMENT_STATUS.APPROVED
-  });
-
-  res.json({ totalAppointments, pendingAppointments, approvedAppointments });
-});
+    return res.json({ totalAppointments, pendingAppointments, approvedAppointments });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};

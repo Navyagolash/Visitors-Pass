@@ -3,19 +3,19 @@ import { User } from "../models/User.js";
 
 export const protect = async (req, res, next) => {
   try {
-    const authHeader = req.headers.authorization;
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.split(" ")[1];
 
-    // The frontend sends tokens like: Authorization: Bearer token_here
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    // Login creates a JWT. For protected routes I read that token from the header.
+    if (!token) {
       return res.status(401).json({ message: "Please login first" });
     }
 
-    // After removing "Bearer ", JWT can check if the token was signed by this app.
-    const token = authHeader.split(" ")[1];
+    // jwt.verify checks the signature and gives me back the user id I stored in it.
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.id).select("-password");
 
-    // A valid token is not enough if the account was deleted.
+    // The token may be valid, but the user might have been deleted later.
     if (!user) {
       return res.status(401).json({ message: "This account no longer exists" });
     }
@@ -28,12 +28,12 @@ export const protect = async (req, res, next) => {
 };
 
 export const authorize = (...roles) => (req, res, next) => {
-  // protect() should run before authorize(), so req.user should be available here.
+  // I call protect before this middleware, so req.user should already be set.
   if (!req.user) {
     return res.status(401).json({ message: "User session is missing" });
   }
 
-  // The route passes allowed roles, for example authorize("admin", "security").
+  // Each route decides which roles are allowed.
   if (!roles.includes(req.user.role)) {
     return res.status(403).json({ message: "You are not allowed to perform this action" });
   }
